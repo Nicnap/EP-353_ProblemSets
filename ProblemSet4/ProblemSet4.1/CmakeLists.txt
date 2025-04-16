@@ -1,0 +1,22 @@
+cmake_minimum_required(VERSION 3.22)
+project(Problem4_1 VERSION 1.0.0 LANGUAGES CXX)
+
+
+add_subdirectory(/Users/nknapp/Documents/GitHub/EP-353_ProblemSets/ProblemSet4/ProblemSet4.1/JUCE)
+
+juce_add_console_app(Problem4_1
+    COMPANY_NAME "YourCompany"      # Optional
+    PRODUCT_NAME "Problem4.1"
+)
+
+
+target_sources(Problem4_1 PRIVATE
+    Source/Main.cpp
+)
+
+
+target_link_libraries(Problem4_1 PRIVATE
+    juce::juce_core
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+)

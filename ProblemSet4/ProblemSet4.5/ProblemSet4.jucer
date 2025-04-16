@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="lrYaFX" name="ProblemSet4.5" projectType="consoleapp" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1">
+  <MAINGROUP id="Yg9zA2" name="ProblemSet4.5">
+    <GROUP id="{1810FC6E-70EA-B040-DAF3-7FA78AB9A918}" name="Source">
+      <FILE id="M3lrHf" name="Main.cpp" compile="1" resource="0" file="Source/Main.cpp"/>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES/>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1"/>
+  <EXPORTFORMATS>
+    <XCODE_MAC targetFolder="Builds/MacOSX">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="ProblemSet4.5"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="ProblemSet4.5"/>
+      </CONFIGURATIONS>
+    </XCODE_MAC>
+  </EXPORTFORMATS>
+</JUCERPROJECT>
