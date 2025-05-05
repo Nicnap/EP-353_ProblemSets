@@ -102,8 +102,6 @@ void WizardWaveAudioProcessorEditor::processLineSegments()
     // 1) Clear all effect flags
     processor.setReverbEnabled     (false);
     processor.setDelayEnabled      (false);
-    processor.setPanLeftEnabled    (false);
-    processor.setPanRightEnabled   (false);
     processor.setLPFEnabled        (false);
     processor.setHPFEnabled        (false);
     processor.setDistortionEnabled (false);
@@ -127,11 +125,8 @@ void WizardWaveAudioProcessorEditor::processLineSegments()
         return edges.contains ({ x, y }) || edges.contains ({ y, x });
     };
 
-    // 3) Apply interior‐connection → effect rules unconditionally
+    // 3) Apply interior‐connection → effect rules
     if (hasEdge(0,3)) processor.setReverbEnabled     (true);  // top→bottom left
-    if (hasEdge(0,2)) processor.setDelayEnabled      (true);  // top→bottom right
-    if (hasEdge(0,1)) processor.setPanRightEnabled   (true);  // top→top right
-    if (hasEdge(0,4)) processor.setPanLeftEnabled    (true);  // top→top left
     if (hasEdge(1,4)) processor.setLPFEnabled        (true);  // top right→top left
     if (hasEdge(1,3)) processor.setHPFEnabled        (true);  // top right→bottom left
     if (hasEdge(4,2)) processor.setDistortionEnabled (true);  // top left→bottom right
