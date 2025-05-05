@@ -18,7 +18,6 @@
     The connections "inside" of the pentagon, act as processing effects as follows.
     
     Top dot to bottom left - Reverb on
-    Top dot to bottom right - Delay on
     Top right dot to top left - LPF on
     Top right dot to bottom left - HPF on
     Top left dot to bottom right - Distortion
