@@ -4,6 +4,7 @@
 #include "SynthSound.h"
 
 //==============================================================================
+// Constructor & parameter setup
 WizardWaveAudioProcessor::WizardWaveAudioProcessor()
     : AudioProcessor (BusesProperties()
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
@@ -25,24 +26,23 @@ void WizardWaveAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     synth.setCurrentPlaybackSampleRate (sampleRate);
     sampleRateHz = (float) sampleRate;
 
+    // ADSR defaults
     adsrParams = { 0.1f, 0.1f, 0.8f, 0.2f };
 
+    // Reverb defaults
     reverbParams.roomSize = 0.5f;
     reverb.setParameters (reverbParams);
 
-    // Delay buffers (unused)
+    // Allocate delay buffers (unused)
     int maxDelay = (int)(2.0 * sampleRate);
     delayBufferL.assign (maxDelay, 0.0f);
     delayBufferR.assign (maxDelay, 0.0f);
     writeHead    = 0;
     delaySamples = (int)(0.5 * sampleRate);
 
-    // Initialize two LPF and HPF filters (left & right) with default cutoffs
+    // Initialize both channels’ filters
     for (int ch = 0; ch < 2; ++ch)
     {
-        lpfFilters[ch].reset();
-        hpfFilters[ch].reset();
-
         lpfFilters[ch].coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass  (sampleRateHz, 20000.0f);
         hpfFilters[ch].coefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass (sampleRateHz,    20.0f);
     }
@@ -60,7 +60,7 @@ void WizardWaveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     buffer.clear();
 
-    // 1) Synth rendering
+    // Synth rendering ---
     for (int i = 0; i < synth.getNumVoices(); ++i)
         if (auto* voice = dynamic_cast<SynthVoice*> (synth.getVoice(i)))
         {
@@ -71,12 +71,13 @@ void WizardWaveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         }
     synth.renderNextBlock (buffer, midi, 0, numSamples);
 
+    // Intensity normalized
     float normI = intensity / 100.0f;
 
-    // 2) Reverb
+    // Reverb (stereo) ---
     if (reverbOn)
     {
-        reverbParams.roomSize = 0.2f + normI * 0.8f;
+        reverbParams.roomSize = 0.2f + normI * 0.8f;  // 0.2→1.0
         reverb.setParameters (reverbParams);
 
         juce::dsp::AudioBlock<float>        block  (buffer);
@@ -84,46 +85,41 @@ void WizardWaveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         reverb.process (ctx);
     }
 
-    // --- 3) Delay commented out ---
+    // --- 3) Delay (entirely commented out) ---
     /*
     if (delayOn)
     {
-        // ...
+        // your old delay code here, now inert
     }
     */
 
-    // 4) LPF: sweep 20k→200Hz per channel
+    // LPF per channel, in‑place coefficient update bc static ---
     if (lpfOn)
     {
         float cutoff = 20000.0f - normI * 19800.0f; // 20k→200Hz
         for (int ch = 0; ch < 2; ++ch)
         {
-            // update cutoff on that channel's filter
-            *lpfFilters[ch].coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass (
-                sampleRateHz, cutoff);
-
+            *lpfFilters[ch].coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRateHz, cutoff);
             auto* ptr = buffer.getWritePointer (ch);
             for (int i = 0; i < numSamples; ++i)
                 ptr[i] = lpfFilters[ch].processSample (ptr[i]);
         }
     }
 
-    // 5) HPF: sweep 20→2000Hz per channel
+    // HPF per channel, in‑place coefficient update bc static ---
     if (hpfOn)
     {
         float cutoff = 20.0f + normI * 1980.0f; // 20→2000Hz
         for (int ch = 0; ch < 2; ++ch)
         {
-            *hpfFilters[ch].coefficients = *juce::dsp::IIR::Coefficients<float>::makeHighPass (
-                sampleRateHz, cutoff);
-
+            *hpfFilters[ch].coefficients = *juce::dsp::IIR::Coefficients<float>::makeHighPass (sampleRateHz, cutoff);
             auto* ptr = buffer.getWritePointer (ch);
             for (int i = 0; i < numSamples; ++i)
                 ptr[i] = hpfFilters[ch].processSample (ptr[i]);
         }
     }
 
-    // 6) Distortion
+    // Distortion (stereo) ---
     if (distortionOn)
     {
         float drive = 1.0f + normI * 4.0f;

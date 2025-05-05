@@ -12,11 +12,12 @@ public:
     WizardWaveAudioProcessor();
     ~WizardWaveAudioProcessor() override;
 
+    // Audio callbacks
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
     void processBlock   (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    // Editor creation (defined in cpp)
+    // Editor creation
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override                  { return true; }
 
@@ -25,13 +26,11 @@ public:
     bool acceptsMidi() const override                { return true; }
     bool producesMidi() const override               { return false; }
     double getTailLengthSeconds() const override     { return 0.0; }
-
     int getNumPrograms() override                    { return 1; }
     int getCurrentProgram() override                 { return 0; }
     void setCurrentProgram (int) override            {}
     const juce::String getProgramName (int) override { return {}; }
     void changeProgramName (int, const juce::String&) override {}
-
     void getStateInformation (juce::MemoryBlock&) override {}
     void setStateInformation (const void*, int) override   {}
 
@@ -39,7 +38,7 @@ public:
     juce::AudioParameterBool* getUseADSRParam()       { return useADSR; }
     void setWaveType          (int wt)                { waveType     = wt; }
     void setReverbEnabled     (bool b)                { reverbOn     = b; }
-    void setDelayEnabled      (bool b)                { delayOn      = b; }
+    void setDelayEnabled      (bool b)                { delayOn      = b; }  // still unused
     void setLPFEnabled        (bool b)                { lpfOn        = b; }
     void setHPFEnabled        (bool b)                { hpfOn        = b; }
     void setDistortionEnabled (bool b)                { distortionOn = b; }
@@ -57,16 +56,18 @@ private:
           hpfOn         = false,
           distortionOn  = false;
     float intensity     = 0.0f;
+    float sampleRateHz  = 44100.0f;
 
-    // DSP objects
-    juce::dsp::Reverb            reverb;
+    // Reverb
+    juce::dsp::Reverb             reverb;
     juce::dsp::Reverb::Parameters reverbParams;
-    juce::dsp::IIR::Filter<float> lpfFilter, hpfFilter;
 
-    // Manual stereo delay
+    // Two independent LPF and HPF filters (one per channel)
+    std::array<juce::dsp::IIR::Filter<float>, 2> lpfFilters, hpfFilters;
+
+    // Delay buffers (kept but not used)
     std::vector<float> delayBufferL, delayBufferR;
     int writeHead = 0, delaySamples = 0;
-    float sampleRateHz = 44100.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WizardWaveAudioProcessor)
 };
