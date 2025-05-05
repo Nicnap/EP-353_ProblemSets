@@ -1,77 +1,121 @@
+// PluginEditor.cpp
 #include "PluginEditor.h"
-#include "PluginProcessor.h"
+#include "SynthVoice.h"
 
-MagicSynthAudioProcessorEditor::MagicSynthAudioProcessorEditor (MagicSynthAudioProcessor& p)
+WizardWaveAudioProcessorEditor::WizardWaveAudioProcessorEditor (WizardWaveAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
-    setSize (900, 700);
-    addAndMakeVisible(processor.planeManager);
+    predefinedDots.resize (5);
+    setSize (600, 400);
 
-    // Continuous Mode toggle
-    addAndMakeVisible(continuousModeButton);
-    continuousModeButton.setButtonText("Continuous Mode");
-    continuousModeButton.setToggleState(true, juce::dontSendNotification);
-    continuousModeButton.onClick = [this]()
+    addAndMakeVisible (adsrButton);
+    adsrButton.setTopLeftPosition (10, 10);
+    adsrButton.onClick = [this]()
     {
-        processor.stateManager->setContinuousMode(continuousModeButton.getToggleState());
-    };
-
-    // Randomness slider
-    addAndMakeVisible(randomnessSlider);
-    randomnessSlider.setRange(0.0, 1.0, 0.01);
-    randomnessSlider.setValue(0.3);
-    randomnessSlider.setTextValueSuffix(" randomness");
-    randomnessSlider.onValueChange = [this]()
-    {
-        processor.stateManager->setRandomnessAmount((float)randomnessSlider.getValue());
-    };
-
-    // One-shot generation
-    addAndMakeVisible(oneShotButton);
-    oneShotButton.setButtonText("Generate One-Shot");
-    oneShotButton.onClick = [this]()
-    {
-        processor.stateManager->triggerOneShotGeneration();
-    };
-
-    // Preset Save (always to Documents/MagicSynthPreset.preset)
-    addAndMakeVisible(savePresetButton);
-    savePresetButton.setButtonText("Save Preset");
-    savePresetButton.onClick = [this]()
-    {
-        auto file = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
-                          .getChildFile("MagicSynthPreset.preset");
-        processor.presetManager->savePreset(file);
-    };
-
-    // Preset Load (always from Documents/MagicSynthPreset.preset)
-    addAndMakeVisible(loadPresetButton);
-    loadPresetButton.setButtonText("Load Preset");
-    loadPresetButton.onClick = [this]()
-    {
-        auto file = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
-                          .getChildFile("MagicSynthPreset.preset");
-        if (file.existsAsFile())
-            processor.presetManager->loadPreset(file);
+        auto* param = processor.getUseADSRParam();
+        param->beginChangeGesture();
+        param->setValueNotifyingHost (1.0f - param->get());
+        param->endChangeGesture();
     };
 }
 
-MagicSynthAudioProcessorEditor::~MagicSynthAudioProcessorEditor() {}
+WizardWaveAudioProcessorEditor::~WizardWaveAudioProcessorEditor() = default;
 
-void MagicSynthAudioProcessorEditor::paint (juce::Graphics& g)
+void WizardWaveAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colours::darkslategrey);
+    g.fillAll (juce::Colour (0xFF800080));
+    g.setColour (juce::Colours::white);
+
+    for (auto& pt : predefinedDots)
+        g.fillEllipse (pt.x - 5.0f, pt.y - 5.0f, 10.0f, 10.0f);
+
+    for (auto& segment : lineSegments)
+    {
+        auto& p1 = predefinedDots[segment.first];
+        auto& p2 = predefinedDots[segment.second];
+        g.drawLine (juce::Line<float>(p1, p2), 2.0f);
+    }
 }
 
-void MagicSynthAudioProcessorEditor::resized()
+void WizardWaveAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds();
-    processor.planeManager.setBounds(area.removeFromTop(getHeight() - 120));
+    adsrButton.setSize (100, 30);
 
-    auto controlArea = area.reduced(10);
-    continuousModeButton .setBounds(controlArea.removeFromTop(30).reduced(0, 4));
-    randomnessSlider     .setBounds(controlArea.removeFromTop(60).reduced(0, 4));
-    oneShotButton        .setBounds(controlArea.removeFromTop(30).reduced(0, 4));
-    savePresetButton     .setBounds(controlArea.removeFromTop(30).reduced(0, 4));
-    loadPresetButton     .setBounds(controlArea.removeFromTop(30).reduced(0, 4));
+    float cx     = getWidth()  * 0.5f;
+    float cy     = getHeight() * 0.5f;
+    float radius = juce::jmin (cx, cy) * 0.8f;
+
+    for (int i = 0; i < 5; ++i)
+    {
+        float angle = juce::MathConstants<float>::twoPi * i / 5.0f
+                      - juce::MathConstants<float>::halfPi;
+        predefinedDots[i].x = cx + std::cos (angle) * radius;
+        predefinedDots[i].y = cy + std::sin (angle) * radius;
+    }
+}
+
+void WizardWaveAudioProcessorEditor::mouseDown (const juce::MouseEvent& e)
+{
+    if (e.mods.isRightButtonDown())
+    {
+        constexpr float threshold = 10.0f;
+        int indexToRemove = -1;
+
+        for (int i = 0; i < (int)lineSegments.size(); ++i)
+        {
+            auto& seg = lineSegments[i];
+            auto& p1  = predefinedDots[seg.first];
+            auto& p2  = predefinedDots[seg.second];
+
+            juce::Point<float> nearest;
+            float dist = juce::Line<float>(p1, p2)
+                             .getDistanceFromPoint (e.position, nearest);
+            if (dist < threshold)
+            {
+                indexToRemove = i;
+                break;
+            }
+        }
+
+        if (indexToRemove >= 0)
+        {
+            lineSegments.erase (lineSegments.begin() + indexToRemove);
+            // update wave shape after removal
+            processLineSegments();
+            repaint();
+        }
+        return;
+    }
+
+    for (size_t i = 0; i < predefinedDots.size(); ++i)
+    {
+        if (e.position.getDistanceFrom (predefinedDots[i]) <= 10.0f)
+        {
+            selectedDotIndices.push_back ((int)i);
+            break;
+        }
+    }
+
+    if (selectedDotIndices.size() == 2)
+    {
+        lineSegments.emplace_back (selectedDotIndices[0],
+                                   selectedDotIndices[1]);
+        processLineSegments();
+        selectedDotIndices.clear();
+        repaint();
+    }
+}
+
+void WizardWaveAudioProcessorEditor::processLineSegments()
+{
+    // Determine waveType by how many segments exist (clamped 1..5)
+    int waveType = juce::jlimit (1,
+                                 5,
+                                 (int)lineSegments.size());
+
+    if (auto* voice = dynamic_cast<SynthVoice*> (
+                        processor.getSynth().getVoice (0)))
+    {
+        voice->setWaveType (waveType);
+    }
 }

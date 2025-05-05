@@ -1,117 +1,62 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "SynthVoice.h"
+#include "SynthSound.h"
 
-//==============================================================================
-// Constructor & Destructor
-
-MagicSynthAudioProcessor::MagicSynthAudioProcessor()
-    : AudioProcessor (BusesProperties()
-#if ! JucePlugin_IsMidiEffect
-#if ! JucePlugin_IsSynth
-        .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-#endif
-        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
-#endif
-    )
+WizardWaveAudioProcessor::WizardWaveAudioProcessor()
+    : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 {
-    // Initialize state and preset managers
-    stateManager  = std::make_unique<StateManager>(planeManager,  synthEngine);
-    presetManager = std::make_unique<PresetManager>(planeManager, *stateManager);
+    for (int i = 0; i < 5; ++i)
+        synth.addVoice (new SynthVoice());
+
+    synth.addSound (new SynthSound());
+
+    addParameter (useADSR = new juce::AudioParameterBool ("useADSR", "Use ADSR", false));
 }
 
-MagicSynthAudioProcessor::~MagicSynthAudioProcessor() {}
+WizardWaveAudioProcessor::~WizardWaveAudioProcessor() {}
 
-//==============================================================================
-// Basic Information
-
-const juce::String MagicSynthAudioProcessor::getName() const                { return JucePlugin_Name; }
-bool MagicSynthAudioProcessor::acceptsMidi() const                         { return true; }
-bool MagicSynthAudioProcessor::producesMidi() const                        { return false; }
-bool MagicSynthAudioProcessor::isMidiEffect() const                        { return false; }
-double MagicSynthAudioProcessor::getTailLengthSeconds() const              { return 0.0; }
-
-//==============================================================================
-// Program Management
-
-int MagicSynthAudioProcessor::getNumPrograms()                                { return 1; }
-int MagicSynthAudioProcessor::getCurrentProgram()                             { return 0; }
-void MagicSynthAudioProcessor::setCurrentProgram (int)                        {}
-const juce::String MagicSynthAudioProcessor::getProgramName (int)             { return {}; }
-void MagicSynthAudioProcessor::changeProgramName (int, const juce::String&)   {}
-
-//==============================================================================
-// Preparation & Release
-
-void MagicSynthAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void WizardWaveAudioProcessor::prepareToPlay (double sampleRate, int)
 {
-    // Prepare DSP engine
-    synthEngine.prepareToPlay(sampleRate, samplesPerBlock);
+    synth.setCurrentPlaybackSampleRate (sampleRate);
+    adsrParams.attack  = 0.1f;
+    adsrParams.decay   = 0.1f;
+    adsrParams.sustain = 0.8f;
+    adsrParams.release = 0.2f;
 }
 
-void MagicSynthAudioProcessor::releaseResources()
+void WizardWaveAudioProcessor::releaseResources() {}
+
+void WizardWaveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    // (Nothing to do here currently)
-}
-
-//==============================================================================
-// Bus Layout
-
-#ifndef JucePlugin_PreferredChannelConfigurations
-bool MagicSynthAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
-{
-#if JucePlugin_IsSynth
-    // Must have some output
-    return layouts.getMainOutputChannelSet() != juce::AudioChannelSet::disabled();
-#else
-    // Input and output must both be stereo
-    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())  return false;
-    if (layouts.getMainInputChannelSet()  != juce::AudioChannelSet::stereo())  return false;
-    return true;
-#endif
-}
-#endif
-
-//==============================================================================
-// Audio Processing
-
-void MagicSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
-{
-    juce::ScopedNoDenormals noDenormals;
     buffer.clear();
 
-    // Update continuous/one-shot logic
-    stateManager->update();
+    for (int i = 0; i < synth.getNumVoices(); ++i)
+        if (auto* v = dynamic_cast<SynthVoice*>(synth.getVoice(i)))
+            v->setADSRParameters (useADSR->get() ? adsrParams
+                                                 : juce::ADSR::Parameters { 0,0,1,0 });
 
-    // Render synth voices
-    synthEngine.renderNextBlock(buffer, midiMessages, 0, buffer.getNumSamples());
+    synth.renderNextBlock (buffer, midi, 0, buffer.getNumSamples());
 }
 
-//==============================================================================
-// Editor
-
-bool MagicSynthAudioProcessor::hasEditor() const               { return true; }
-juce::AudioProcessorEditor* MagicSynthAudioProcessor::createEditor()
+void WizardWaveAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    return new MagicSynthAudioProcessorEditor (*this);
+    juce::MemoryOutputStream stream (destData, true);
+    stream.writeByte ((uint8) (useADSR->get() ? 1 : 0));
 }
 
-//==============================================================================
-// State Serialization
-
-void MagicSynthAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+void WizardWaveAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    // TODO: save parameters/state here
+    juce::MemoryInputStream stream (data, (size_t) sizeInBytes, false);
+    uint8 v = stream.readByte();
+    useADSR->setValueNotifyingHost (v ? 1.0f : 0.0f);
 }
 
-void MagicSynthAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
-{
-    // TODO: restore parameters/state here
+juce::AudioProcessorEditor* WizardWaveAudioProcessor::createEditor()      
+{ 
+    return new WizardWaveAudioProcessorEditor (*this); 
+}
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {
+    return new WizardWaveAudioProcessor();
 }
 
-//==============================================================================
-// Factory function for AU and other formats
-
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
-{
-    return new MagicSynthAudioProcessor();
-}

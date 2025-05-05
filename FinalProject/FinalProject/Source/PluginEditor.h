@@ -1,25 +1,28 @@
+// PluginEditor.h
 #pragma once
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-class MagicSynthAudioProcessorEditor  : public juce::AudioProcessorEditor
+class WizardWaveAudioProcessorEditor  : public juce::AudioProcessorEditor
 {
 public:
-    MagicSynthAudioProcessorEditor (MagicSynthAudioProcessor&);
-    ~MagicSynthAudioProcessorEditor() override;
+    WizardWaveAudioProcessorEditor (WizardWaveAudioProcessor&);
+    ~WizardWaveAudioProcessorEditor() override;
 
-    void paint (juce::Graphics&) override;
-    void resized() override;
+    void paint   (juce::Graphics&) override;
+    void resized () override;
+    void mouseDown (const juce::MouseEvent&) override;
 
 private:
-    MagicSynthAudioProcessor& processor;
+    WizardWaveAudioProcessor& processor;
+    juce::TextButton adsrButton { "Toggle ADSR" };
 
-    juce::ToggleButton continuousModeButton;
-    juce::Slider       randomnessSlider;
-    juce::TextButton   oneShotButton;
-    juce::TextButton   savePresetButton;
-    juce::TextButton   loadPresetButton;
+    std::vector<juce::Point<float>>              predefinedDots;
+    std::vector<std::pair<size_t, size_t>>       lineSegments;
+    std::vector<size_t>                          selectedDotIndices;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MagicSynthAudioProcessorEditor)
+    void processLineSegments();
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WizardWaveAudioProcessorEditor)
 };
