@@ -5,8 +5,9 @@ WizardWaveAudioProcessorEditor::WizardWaveAudioProcessorEditor (WizardWaveAudioP
     : AudioProcessorEditor (&p), processor (p)
 {
     predefinedDots.resize (5);
-    setSize (600, 400);
+    setSize (600, 450);
 
+    // ADSR toggle
     addAndMakeVisible (adsrButton);
     adsrButton.setTopLeftPosition (10, 10);
     adsrButton.onClick = [this]()
@@ -16,6 +17,15 @@ WizardWaveAudioProcessorEditor::WizardWaveAudioProcessorEditor (WizardWaveAudioP
         param->setValueNotifyingHost (1.0f - param->get());
         param->endChangeGesture();
     };
+
+    // Intensity slider
+    intensitySlider.setRange (0.0, 100.0, 1.0);
+    intensitySlider.setTextValueSuffix (" Intensity");
+    intensitySlider.onValueChange = [this]()
+    {
+        processor.setIntensity ((float) intensitySlider.getValue());
+    };
+    addAndMakeVisible (intensitySlider);
 }
 
 WizardWaveAudioProcessorEditor::~WizardWaveAudioProcessorEditor() = default;
@@ -39,9 +49,10 @@ void WizardWaveAudioProcessorEditor::paint (juce::Graphics& g)
 void WizardWaveAudioProcessorEditor::resized()
 {
     adsrButton.setSize (100, 30);
+    intensitySlider.setBounds (10, getHeight() - 40, getWidth() - 20, 30);
 
-    float cx     = getWidth()  * 0.5f;
-    float cy     = getHeight() * 0.5f;
+    float cx     = getWidth() * 0.5f;
+    float cy     = (getHeight() - 50) * 0.5f + 20;
     float radius = juce::jmin (cx, cy) * 0.8f;
 
     for (int i = 0; i < 5; ++i)
@@ -62,11 +73,11 @@ void WizardWaveAudioProcessorEditor::mouseDown (const juce::MouseEvent& e)
 
         for (int i = 0; i < (int)lineSegments.size(); ++i)
         {
-            auto& s = lineSegments[i];
+            auto& s       = lineSegments[i];
             juce::Point<float> nearest;
-            float d = juce::Line<float>(predefinedDots[s.first],
-                                        predefinedDots[s.second])
-                        .getDistanceFromPoint (e.position, nearest);
+            float d       = juce::Line<float>(predefinedDots[s.first],
+                                              predefinedDots[s.second])
+                              .getDistanceFromPoint (e.position, nearest);
             if (d < thresh) { removeIdx = i; break; }
         }
 
@@ -99,60 +110,42 @@ void WizardWaveAudioProcessorEditor::mouseDown (const juce::MouseEvent& e)
 
 void WizardWaveAudioProcessorEditor::processLineSegments()
 {
-    // 1) Clear all effect flags
     processor.setReverbEnabled     (false);
     processor.setDelayEnabled      (false);
     processor.setLPFEnabled        (false);
     processor.setHPFEnabled        (false);
     processor.setDistortionEnabled (false);
 
-    // 2) Gather edges into a quick lookup with a small struct that has operator==
     struct Edge
     {
         int a, b;
-        bool operator== (const Edge& other) const noexcept
-        {
-            return a == other.a && b == other.b;
-        }
+        bool operator== (const Edge& o) const noexcept { return a==o.a && b==o.b; }
     };
-
     juce::Array<Edge> edges;
-    for (auto& s : lineSegments)
-        edges.add ({ (int)s.first, (int)s.second });
+    for (auto& s : lineSegments) edges.add ({ (int)s.first, (int)s.second });
+    auto hasEdge = [&edges](int x,int y){ return edges.contains({x,y})||edges.contains({y,x}); };
 
-    auto hasEdge = [&edges](int x, int y)
-    {
-        return edges.contains ({ x, y }) || edges.contains ({ y, x });
-    };
+    // Interior effects
+    if (hasEdge(0,3)) processor.setReverbEnabled     (true);
+    if (hasEdge(1,4)) processor.setLPFEnabled        (true);
+    if (hasEdge(1,3)) processor.setHPFEnabled        (true);
+    if (hasEdge(4,2)) processor.setDistortionEnabled (true);
 
-    // 3) Apply interior‐connection → effect rules
-    if (hasEdge(0,3)) processor.setReverbEnabled     (true);  // top→bottom left
-    if (hasEdge(1,4)) processor.setLPFEnabled        (true);  // top right→top left
-    if (hasEdge(1,3)) processor.setHPFEnabled        (true);  // top right→bottom left
-    if (hasEdge(4,2)) processor.setDistortionEnabled (true);  // top left→bottom right
-
-    // 4) Count only the five “outer” edges:
-    //    (0–1),(1–2),(2–3),(3–4),(4–0)
+    // Outer edges count
     int outerCount = 0;
     const std::pair<int,int> outers[] = {{0,1},{1,2},{2,3},{3,4},{4,0}};
-    for (auto& o : outers)
-        if (hasEdge(o.first, o.second))
-            ++outerCount;
+    for (auto& o : outers) if (hasEdge(o.first,o.second)) ++outerCount;
 
-    // 5) Map outerCount→waveType:
-    //    0→none(0), 1→sine(1), 2→tri(2), 3→rect10(3), 4→rect50(4), 5→saw(5)
     int waveType = 0;
     switch (outerCount)
     {
-        case 0: waveType = 0; break;
         case 1: waveType = 1; break;
         case 2: waveType = 2; break;
         case 3: waveType = 3; break;
         case 4: waveType = 4; break;
         case 5: waveType = 5; break;
-        default: waveType = 5; break;
+        default: waveType = 0; break;
     }
 
-    // 6) Send to processor
     processor.setWaveType (waveType);
 }
