@@ -1,4 +1,3 @@
-// PluginEditor.cpp
 #include "PluginEditor.h"
 #include "SynthVoice.h"
 
@@ -80,7 +79,6 @@ void WizardWaveAudioProcessorEditor::mouseDown (const juce::MouseEvent& e)
         if (indexToRemove >= 0)
         {
             lineSegments.erase (lineSegments.begin() + indexToRemove);
-            // update wave shape after removal
             processLineSegments();
             repaint();
         }
@@ -108,10 +106,19 @@ void WizardWaveAudioProcessorEditor::mouseDown (const juce::MouseEvent& e)
 
 void WizardWaveAudioProcessorEditor::processLineSegments()
 {
-    // Determine waveType by how many segments exist (clamped 1..5)
-    int waveType = juce::jlimit (1,
-                                 5,
-                                 (int)lineSegments.size());
+    // Map 0→saw, 1→sine, 2→triangle, 3→rect10, 4→rect50, >=5→saw
+    int count = (int) lineSegments.size();
+    int waveType = 5; // default saw
+
+    switch (count)
+    {
+        case 0: waveType = 5; break;
+        case 1: waveType = 1; break;
+        case 2: waveType = 2; break;
+        case 3: waveType = 3; break;
+        case 4: waveType = 4; break;
+        default: waveType = 5; break;
+    }
 
     if (auto* voice = dynamic_cast<SynthVoice*> (
                         processor.getSynth().getVoice (0)))
