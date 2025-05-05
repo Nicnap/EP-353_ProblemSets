@@ -1,5 +1,5 @@
 #include "PluginEditor.h"
-#include "SynthVoice.h"
+#include "PluginProcessor.h"
 
 WizardWaveAudioProcessorEditor::WizardWaveAudioProcessorEditor (WizardWaveAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
@@ -28,11 +28,11 @@ void WizardWaveAudioProcessorEditor::paint (juce::Graphics& g)
     for (auto& pt : predefinedDots)
         g.fillEllipse (pt.x - 5.0f, pt.y - 5.0f, 10.0f, 10.0f);
 
-    for (auto& segment : lineSegments)
+    for (auto& seg : lineSegments)
     {
-        auto& p1 = predefinedDots[segment.first];
-        auto& p2 = predefinedDots[segment.second];
-        g.drawLine (juce::Line<float>(p1, p2), 2.0f);
+        auto& a = predefinedDots[seg.first];
+        auto& b = predefinedDots[seg.second];
+        g.drawLine (a.x, a.y, b.x, b.y, 2.0f);
     }
 }
 
@@ -57,31 +57,24 @@ void WizardWaveAudioProcessorEditor::mouseDown (const juce::MouseEvent& e)
 {
     if (e.mods.isRightButtonDown())
     {
-        constexpr float threshold = 10.0f;
-        int indexToRemove = -1;
+        constexpr float thresh = 10.0f;
+        int removeIdx = -1;
 
         for (int i = 0; i < (int)lineSegments.size(); ++i)
         {
-            auto& seg = lineSegments[i];
-            auto& p1  = predefinedDots[seg.first];
-            auto& p2  = predefinedDots[seg.second];
-
+            auto& s = lineSegments[i];
             juce::Point<float> nearest;
-            float dist = juce::Line<float>(p1, p2)
-                             .getDistanceFromPoint (e.position, nearest);
-            if (dist < threshold)
-            {
-                indexToRemove = i;
-                break;
-            }
+            float d = juce::Line<float>(predefinedDots[s.first],
+                                        predefinedDots[s.second])
+                        .getDistanceFromPoint (e.position, nearest);
+            if (d < thresh) { removeIdx = i; break; }
         }
 
-        if (indexToRemove >= 0)
-        {
-            lineSegments.erase (lineSegments.begin() + indexToRemove);
-            processLineSegments();
-            repaint();
-        }
+        if (removeIdx >= 0)
+            lineSegments.erase (lineSegments.begin() + removeIdx);
+
+        processLineSegments();
+        repaint();
         return;
     }
 
@@ -106,23 +99,65 @@ void WizardWaveAudioProcessorEditor::mouseDown (const juce::MouseEvent& e)
 
 void WizardWaveAudioProcessorEditor::processLineSegments()
 {
-    // Map 0→saw, 1→sine, 2→triangle, 3→rect10, 4→rect50, >=5→saw
-    int count = (int) lineSegments.size();
-    int waveType = 5; // default saw
+    // 1) Clear all effect flags
+    processor.setReverbEnabled     (false);
+    processor.setDelayEnabled      (false);
+    processor.setPanLeftEnabled    (false);
+    processor.setPanRightEnabled   (false);
+    processor.setLPFEnabled        (false);
+    processor.setHPFEnabled        (false);
+    processor.setDistortionEnabled (false);
 
-    switch (count)
+    // 2) Gather edges into a quick lookup with a small struct that has operator==
+    struct Edge
     {
-        case 0: waveType = 5; break;
+        int a, b;
+        bool operator== (const Edge& other) const noexcept
+        {
+            return a == other.a && b == other.b;
+        }
+    };
+
+    juce::Array<Edge> edges;
+    for (auto& s : lineSegments)
+        edges.add ({ (int)s.first, (int)s.second });
+
+    auto hasEdge = [&edges](int x, int y)
+    {
+        return edges.contains ({ x, y }) || edges.contains ({ y, x });
+    };
+
+    // 3) Apply interior‐connection → effect rules unconditionally
+    if (hasEdge(0,3)) processor.setReverbEnabled     (true);  // top→bottom left
+    if (hasEdge(0,2)) processor.setDelayEnabled      (true);  // top→bottom right
+    if (hasEdge(0,1)) processor.setPanRightEnabled   (true);  // top→top right
+    if (hasEdge(0,4)) processor.setPanLeftEnabled    (true);  // top→top left
+    if (hasEdge(1,4)) processor.setLPFEnabled        (true);  // top right→top left
+    if (hasEdge(1,3)) processor.setHPFEnabled        (true);  // top right→bottom left
+    if (hasEdge(4,2)) processor.setDistortionEnabled (true);  // top left→bottom right
+
+    // 4) Count only the five “outer” edges:
+    //    (0–1),(1–2),(2–3),(3–4),(4–0)
+    int outerCount = 0;
+    const std::pair<int,int> outers[] = {{0,1},{1,2},{2,3},{3,4},{4,0}};
+    for (auto& o : outers)
+        if (hasEdge(o.first, o.second))
+            ++outerCount;
+
+    // 5) Map outerCount→waveType:
+    //    0→none(0), 1→sine(1), 2→tri(2), 3→rect10(3), 4→rect50(4), 5→saw(5)
+    int waveType = 0;
+    switch (outerCount)
+    {
+        case 0: waveType = 0; break;
         case 1: waveType = 1; break;
         case 2: waveType = 2; break;
         case 3: waveType = 3; break;
         case 4: waveType = 4; break;
+        case 5: waveType = 5; break;
         default: waveType = 5; break;
     }
 
-    if (auto* voice = dynamic_cast<SynthVoice*> (
-                        processor.getSynth().getVoice (0)))
-    {
-        voice->setWaveType (waveType);
-    }
+    // 6) Send to processor
+    processor.setWaveType (waveType);
 }

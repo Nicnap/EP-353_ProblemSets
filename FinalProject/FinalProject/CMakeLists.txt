@@ -38,6 +38,7 @@ target_link_libraries(WizardWave
       juce::juce_audio_basics
       juce::juce_audio_processors
       juce::juce_audio_utils
+	juce::juce_dsp
 )
 
 # Generate the consolidated JUCE header
